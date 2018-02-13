@@ -1,0 +1,296 @@
+---
+title: "p8105_hw5_sl4283"
+author: "Siling Li"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r get started}
+library(tidyverse)
+library(rvest)
+library(httr)
+library(ggthemes)
+
+library(janitor)
+library(haven)
+
+library(stringr)
+library(forcats)
+
+library(tidytext)
+library(viridis)
+
+library(faraway)
+library(broom)
+
+
+theme_set(theme_bw())
+theme_update(legend.position = "bottom")
+
+```
+
+# Problem 1
+## read and clean the data
+```{r }
+# read the data
+nyc_station = GET("https://data.ny.gov/resource/hvwh-qtfg.csv",query = list(`$limit` = 2000)) %>% 
+  content("parsed")%>%
+# clean the data
+select(station_name,entrance_longitude,entrance_latitude,east_west_street,north_south_street,corner)
+
+nyc_station
+```
+
+## a plot 
+```{r}
+nyc_station%>%
+  group_by(station_name) %>%
+  summarise(entra_num=n()) %>%
+  filter(entra_num>10) %>%
+  mutate(station_name = fct_reorder(station_name, entra_num)) %>% 
+  ggplot(aes(x = station_name, y = entra_num)) + 
+  geom_bar(stat = "identity", fill="pink") +
+  labs(
+    x = "Station Names",
+    y = "Number of entrance",
+    title = "The number of entrances for each subway station"
+    ) 
+```
+## station name with “St” and end with "St"
+```{r}
+num_st = nyc_station%>%
+  select(station_name) %>%
+  distinct()%>%
+  filter(str_detect(station_name, regex("St", ignore_case = FALSE)))%>%
+  nrow()
+  
+num_endw_st = nyc_station%>%
+  select(station_name) %>%
+  distinct()%>%
+  filter(str_detect(station_name, regex(".*St$", ignore_case = FALSE)))%>%
+  nrow()
+```
+There are `r num_st` subway station names contain the abbreviation “St” and `r num_endw_st` end with “St”.
+
+# Problem 2
+```{r}
+url = "https://en.wikipedia.org/wiki/List_of_Game_of_Thrones_episodes"
+viewer_xml = read_html(url)
+
+# explore the data
+viewer_xml %>%
+  html_nodes(css = "table")
+
+
+# read the data
+table_s1 = (viewer_xml %>% html_nodes(css = "table"))[[2]] %>%
+  html_table() 
+table_s2 = (viewer_xml %>% html_nodes(css = "table"))[[3]] %>%
+  html_table() 
+table_s3 = (viewer_xml %>% html_nodes(css = "table"))[[4]] %>%
+  html_table() 
+table_s4 = (viewer_xml %>% html_nodes(css = "table"))[[5]] %>%
+  html_table() 
+table_s5 = (viewer_xml %>% html_nodes(css = "table"))[[6]] %>%
+  html_table() 
+table_s6 = (viewer_xml %>% html_nodes(css = "table"))[[7]] %>%
+  html_table() 
+table_s7 = (viewer_xml %>% html_nodes(css = "table"))[[8]] %>%
+  html_table() 
+
+# merge the data
+
+viewer_data = bind_rows(table_s1,table_s2,table_s3,table_s4,table_s5,table_s6,table_s7) %>%
+
+# tidy the data In your final dataset, include variables for season, episode, and viewers
+clean_names() %>%
+  select(no_overall,episode = no_in_season, viewers = u_s_viewers_millions) %>%
+  mutate(season = (no_overall - episode)/10 + 1,
+  # create a unique episode ID of the form SX_EYY where X and Y are season or episode numbers.
+        episode_id = paste("S",season,"_E0",episode,sep = ""),
+        episode_id = str_replace(episode_id, "010", "10"),
+        viewers = str_replace_all(viewers,"\\[.*?]",""),
+        viewers = as.numeric(viewers)) %>%
+  select(-no_overall)
+
+viewer_data
+```
+## bar plot
+```{r}
+# Make a plot that shows the number of viewers for each episode of each season.
+viewer_data %>%
+  ggplot(aes(x = episode_id, y = viewers, fill = season)) + 
+  geom_bar(stat = "identity") +
+  labs(
+    x = "Episode_id",
+    y = "Number of viewers(million)",
+    title = "The number of viewers for each episode of each season(million)"
+    ) 
+```
+## boxplot
+```{r}
+# Make a boxplot of the number of viewers for each episode of each season.
+viewer_data %>%
+  ggplot(aes(x = season, y = viewers,color = season,group = season)) + 
+  geom_boxplot() +
+  labs(
+    x = "Season",
+    y = "Number of viewers(million)",
+    title = "The number of viewers of each season(million)"
+    ) 
+```
+## Linear model
+```{r}
+# Fit a linear model that treats number of viewers in each episode as a response and season as a categorical predictor
+set.seed(1)
+
+viewer_data %>%
+  # make season 4 the reference season
+mutate(season = fct_relevel(as.factor(season), "4")) %>%
+lm(viewers~season,data = .) %>%
+broom::tidy()
+```
+Results of my modeling: The linear function is viewers = β0 + β1 * season. From the table above, we could get the number of estimated viewers of each season by add up 6.846(taking season 4 as reference) and estimate. For example, for season 1, the number of estimated viewers is computed as 6.846-4.331 = 2.515. Moreover, the p-value of each season except season 5 is less than 0.01, so we are 99% confident to say that these results are of significance. For season 5, we could obtain from the boxplot above that there are many outliers, hence the estimate might not be accurate. Overall, we could estimate the number of viewers by season.
+
+
+# Problem 3
+```{r }
+dynamite_reviews = read_csv("../data/dynamite_reviews.csv")
+```
+Inspect and describe the resulting dataset. What variables are included? Has the scraping been successful?  
+The variables included are title, stars and text. The scraping is successful, given that we have got the information we need.
+
+```{r}
+# use words as the token and remove stop words.
+review_words = dynamite_reviews %>%
+  mutate(review_num = row_number()) %>%
+  unnest_tokens(word, text) 
+
+review_words = anti_join(review_words, stop_words) 
+review_words
+```
+
+## words most frequently used in five-star reviews
+```{r}
+review_words %>% 
+  filter(stars == 5) %>%
+  count(word, sort = TRUE) %>% 
+  top_n(10) %>% 
+  mutate(word = fct_reorder(word, n)) 
+```  
+## words most frequently used in 1-star reviews
+```{r}
+review_words %>% 
+  filter(stars == 1) %>%
+  count(word, sort = TRUE) %>% 
+  top_n(10) %>% 
+  mutate(word = fct_reorder(word, n)) 
+```
+
+## a plot
+```{r}
+# Make a plot that shows the (approximate) log odds ratio for word appearance comparing 1-star reviews to 5-star reviews
+word_ratios = review_words %>%
+  mutate(stars = recode(stars, "1" = "1_star",
+                        "5" = "5_star")) %>%
+  filter(stars %in% c("1_star","5_star")) %>% 
+  count(word, stars) %>%
+  spread(stars, n, fill = 0) %>%
+  select(A="1_star",B="5_star",word) %>%
+  mutate(
+    s1_odds = (A + 1) / (sum(A) + 1),
+    s5_odds = (B + 1) / (sum(B) + 1),
+    log_OR = log(s1_odds / s5_odds)
+  ) %>%
+  arrange(desc(log_OR)) 
+
+word_ratios %>%
+  mutate(pos_log_OR = ifelse(log_OR > 0, "1-Star > 5-Star", "5-Star > 1-Star")) %>% 
+  group_by(pos_log_OR) %>%
+  # include the 10 words with the most extreme log ORs in both directions
+  top_n(10, abs(log_OR)) %>%
+  ungroup() %>%
+  mutate(word = fct_reorder(word, log_OR)) %>%
+  ggplot(aes(word, log_OR, fill = pos_log_OR)) +
+  geom_col() +
+  coord_flip() +
+  ylab("log odds ratio (Star_1/Star_5)") +
+  scale_fill_discrete(name = "")
+```
+
+## a sentiment analysis of the review texts and a plot
+```{r}
+bing_sentiments = get_sentiments("bing")
+
+review_sentiments = review_words %>% 
+  inner_join(., bing_sentiments) %>% 
+  count(review_num, sentiment) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentiment = positive - negative) %>% 
+  select(review_num, sentiment) 
+
+review_sentiments = right_join(review_words, review_sentiments,by = "review_num")
+
+# make a plot of your results and include the star rating in your graphic. 
+
+set.seed(1)
+
+review_sentiments %>% 
+  mutate( review_num = row_number(),
+    review_num = factor(review_num),
+    review_num = fct_reorder(review_num, sentiment),
+    stars = as.factor(stars)) %>% 
+  ggplot(aes(x = review_num, 
+             y = sentiment,fill = stars, color = stars)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  scale_fill_viridis(discrete = TRUE) + 
+  scale_color_viridis(discrete = TRUE) 
+```
+  
+## the most positive review
+```{r}
+review_sum_sentiments = review_sentiments %>%
+  group_by(review_num) %>%
+  summarize(sum_sentiment = sum(sentiment)) 
+
+max = max(review_sum_sentiments$sum_sentiment)
+
+pos_review = review_sum_sentiments %>%
+  filter(sum_sentiment == max)
+
+pos_review = dynamite_reviews %>%
+  mutate(review_num = row_number()) %>%
+  filter(review_num==pos_review$review_num)
+
+```
+Title:`r pos_review$title`  
+Stars:`r pos_review$stars`  
+Text:`r pos_review$text`  
+
+
+## the most negative review?
+```{r}
+min = min(review_sum_sentiments$sum_sentiment)
+
+neg_review = review_sum_sentiments %>%
+  filter(sum_sentiment == min)
+
+neg_review = dynamite_reviews %>%
+  mutate(review_num = row_number()) %>%
+  filter(review_num == neg_review$review_num)
+
+
+```
+
+Title:`r neg_review$title`  
+Stars:`r neg_review$stars`  
+Text:`r neg_review$text`  

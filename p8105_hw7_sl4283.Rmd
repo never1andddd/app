@@ -1,0 +1,293 @@
+---
+title: "p8105_hw7_sl4283"
+author: "Siling Li"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(forcats)
+library(stringr)
+library(janitor)
+library(modelr)
+library(plotly)
+theme_set(theme_bw())
+theme_update(legend.position = "bottom")
+
+set.seed(1)
+```
+
+# Problem 1
+```{r}
+library(tidyverse)
+
+set.seed(10)
+
+iris_with_missing = iris %>% 
+  map_df(~replace(.x, sample(1:150, 20), NA)) %>%
+  mutate(Species = as.character(Species))
+```
+
+## repalce na function
+```{r}
+replace_missing_val = function(x) {
+  
+  if (is.numeric(x)) {
+    for (i in 1:length(x)) {
+      if (is.na(x[i])) {
+        x[i] = mean(x, na.rm=TRUE)
+      }
+    }
+  } else if (is.character(x)) {
+    for (i in 1:length(x)) {
+      if (is.na(x[i])) {
+        x[i] = "virginica"
+      }
+    }
+  }
+  
+ x
+}
+```
+
+## Apply this function to the columns of iris_with_missing using a map statement.
+```{r}
+map_df(iris_with_missing,replace_missing_val)
+```
+
+## Edit your function so that different summaries can be used for numeric variables. 
+```{r}
+replace_missing_val_2 = function(x,summary) {
+  
+  if (is.numeric(x)) {
+    for (i in 1:length(x)) {
+      if (is.na(x[i])) {
+        if (summary == "mean"){
+          x[i] = mean(x, na.rm=TRUE)
+        } else if (summary == "median") {
+          x[i] = median(x, na.rm=TRUE)
+        }
+    }
+  }
+    } else if (is.character(x)) {
+    for (i in 1:length(x)) {
+      if (is.na(x[i])) {
+        x[i] = "virginica"
+      }
+    }
+  }
+ x
+}
+```
+
+Apply this function to the columns of iris_with_missing using a map statement, first using mean and then using median.
+```{r}
+map_df(iris_with_missing,~replace_missing_val_2(.,"mean"))
+map_df(iris_with_missing,~replace_missing_val_2(.,"median"))
+```
+
+# Problem 2
+## Load and tidy data
+```{r}
+airbnb = read_csv("../data/nyc_airbnb.zip") 
+# Nest columns within boro and describe the resulting data frame
+airbnb_nest = airbnb %>%
+  group_by(neighbourhood_group) %>%
+  nest()
+
+airbnb_nest = airbnb_nest%>%
+  select(boro = neighbourhood_group,data)
+
+airbnb_nest
+```
+Describe the resulting data frame: the resulting data frame contains 2 columns 5 rows with a single row for each boro. The data column is a list column, inside it is the observations of rooms for each boro, namely id, name, review_score_location, etc.
+
+## Fit models for rental price as an outcome using rating and room type as predictors.
+```{r}
+airbnb_lm = function(df) {
+  lm(price ~ review_scores_location + room_type, data = df)
+}
+
+airbnb_lm(airbnb_nest$data[[1]])
+
+airbnb_analysis = 
+  airbnb %>%
+  mutate(room_type = as.factor(room_type)) %>%
+  group_by(neighbourhood_group) %>%
+  nest() %>% 
+  # Extract the results of your modeling and unnest the result.
+  mutate(models = map(data, airbnb_lm),
+         results = map(models, broom::tidy)) %>% 
+  select(-data, -models) %>% 
+  unnest()
+
+# summary of MLR model for each boro
+airbnb_analysis
+```
+From this table, we could obtain that at 5% significance level, review_scores_location is a significant predictor of price for Brooklyn and Manhattan, room_type is a significant predictor of price for all neibourhoodgroup.
+
+```{r}
+# a function to draw the plot of MLR for Bronx
+plot_mlr = function(boro){
+coef_table = airbnb_analysis %>%
+  filter(neighbourhood_group == boro) 
+
+plot = airbnb %>%
+  filter(neighbourhood_group == boro) %>%
+ggplot(aes(x = review_scores_location, y = price,colour= room_type)) +
+    geom_point() +
+  geom_abline(slope = coef_table$estimate[2],intercept = coef_table$estimate[1],colour = "red") + 
+  geom_abline(slope = coef_table$estimate[2],intercept = coef_table$estimate[1] + coef_table$estimate[3],colour = "green") +
+  geom_abline(slope = coef_table$estimate[2],intercept = coef_table$estimate[1] + coef_table$estimate[4],colour = "blue") 
+  
+ggplotly(plot)
+}
+```
+
+# figures
+```{r}
+# plot of MLR model for Bronx
+plot_mlr("Bronx")
+# plot of MLR model for Queens
+plot_mlr("Queens")
+# plot of MLR model for Brooklyn
+plot_mlr("Brooklyn")
+# plot of MLR model for Staten Island
+plot_mlr("Staten Island")
+# plot of MLR model for Manhattan
+plot_mlr("Manhattan")
+```
+
+# Problem 3
+```{r}
+multi_regression = function(n,beta1,beta2,sigma) {
+  
+  multi_data = tibble(
+    x1 = rnorm(n, mean = 0, sd = 1),
+    x2 = rnorm(n, mean = 0, sd = 1),
+    y = 1 + beta1 * x1 + beta2 * x2 + rnorm(n, 0, sqrt(sigma))
+  )
+  
+  ls_fit = lm(y ~ x1 + x2, data = multi_data)
+  tibble(
+    beta2_true = beta2,
+    beta2_hat = coef(ls_fit)[3],
+    p_value = summary(ls_fit)$coefficients[3,4]
+  )
+}
+
+# Generate 5000 datasets from the model (reduce 10000 to 5000)
+sim_results_0 = rerun(10000, multi_regression(30,1,0,50)) %>% 
+ bind_rows 
+# For each dataset, save β̂ 2 and the p-value arising from a test of H:β2=0 using α=0.05. Repeat the above for β2={1,2,3,4,5,6}  
+sim_results = bind_rows(sim_results_0,
+                        rerun(10000, multi_regression(30,1,1,50)),
+                        rerun(10000, multi_regression(30,1,2,50)),
+                        rerun(10000, multi_regression(30,1,3,50)),
+                        rerun(10000, multi_regression(30,1,4,50)),
+                        rerun(10000, multi_regression(30,1,5,50)),
+                        rerun(10000, multi_regression(30,1,6,50))
+                        )
+
+# A plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of β2 on the x axis. 
+sim_results %>%
+  mutate(reject = ifelse(p_value >= 0.05,0,ifelse(p_value <= 0.05, 1, NA))) %>%
+  group_by(beta2_true) %>%
+summarize(reject_num = mean(reject)) %>%
+ggplot(aes(x = beta2_true,y = reject_num)) +
+  geom_bar(stat = "identity") 
+
+```
+
+## Describe the association between effect size and power.
+We could obtain from the plot that the larger the effect size the bigger the power. The power of the 
+test approaches 1 when effect size equals to 6.
+
+```{r}
+#A plot showing the average estimate of β̂ 2 on the y axis and the true value of β2 on the x axis. 
+sim_results %>%
+  group_by(beta2_true) %>%
+mutate(average = mean(beta2_hat))%>%
+ggplot(aes(x = beta2_true,y = average),group = beta2_true) +
+   geom_point()+ geom_line() 
+
+# A plot showing the average estimate of β̂ 2 in tests for which the null is rejected on the y axis and the true value of β2 on the x axis. 
+sim_results %>%
+  filter(p_value<0.05) %>%
+  group_by(beta2_true) %>%
+mutate(average = mean(beta2_hat)) %>%
+ggplot(aes(x = beta2_true,y = average),group = beta2_true) +
+   geom_point()+ geom_line() 
+```
+## Is the sample average of β̂ 2 across tests for which the null is rejected approximately equal to the true value of β2? Why or why not?  
+No. Because \(\hat \beta_2\) is an unbiased estimate of \(\beta_2\), E(\(\hat \beta_2\)) = \(\beta_2\). The first plot is a linear line. However, to test the hypothesis: $H_0$: $\beta_2$=0, the test stastastic t* = \(\frac{\hat \beta_2}{se(\hat \beta_2)}\) > \(t_{n-2,0.975}\), where \(se^2(\hat \beta_2)\) is an unbiased point estimater of $\sigma^2${$\beta_2$}, \(se^2(\hat \beta_2)\) = \(\frac{MSE}{\sum_(X_i-X)^2})\). Because MSE remains unchanged in this problem, for \(\hat \beta_2\) across tests for which the null is rejected, \(\hat \beta_2\) > \(\beta_2\).
+
+# Problem 4
+## sample size = 25
+```{r}
+set.seed(1)
+
+n_samp = 25
+
+sim_df_const = tibble(
+  x = rnorm(n_samp, 1, 1),
+  error = rnorm(n_samp, 0, 1),
+  y = 2 + 3 * x + error
+)
+
+sim_df_const %>% 
+  bootstrap(n=1000) %>% 
+  mutate(models = map(strap, ~lm(y ~ x, data = .x) ),
+         results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest() %>% 
+  select(.id, term, estimate) %>%
+  spread(key = term, value = estimate) %>%
+  clean_names() %>%
+  mutate(theta = log(x_intercept/x)) %>%
+ggplot(aes(x=theta))+
+  geom_density(alpha = .4, adjust = .5, color = "black")
+
+
+
+```
+
+
+```{r}
+# a function to take value of sample size and generate a plot of distribution of theta
+generate_theta_distribution = function(n){
+  set.seed(1)
+  sim_df = tibble(
+    x = rnorm(n, 1, 1),
+  error = rnorm(n, 0, 1),
+  y = 2 + 3 * x + error
+  )
+  
+  sim_df %>% 
+  bootstrap(n=1000) %>% 
+  mutate(models = map(strap, ~lm(y ~ x, data = .x) ),
+         results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest() %>% 
+  select(.id, term, estimate) %>%
+  spread(key = term, value = estimate) %>%
+  clean_names() %>%
+  mutate(theta = log(x_intercept/x)) %>%
+ggplot(aes(x=theta))+
+  geom_density(alpha = .4, adjust = .5, color = "black")
+
+  
+}
+
+# sample size = 50
+generate_theta_distribution(50)
+# sample size = 250
+generate_theta_distribution(250)
+
+```
+
+## Comment
+As the sample size grows, \(\theta\) get close to -0.4 or -0.45, the variance of the distribution decrease.

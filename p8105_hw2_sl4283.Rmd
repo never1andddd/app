@@ -1,0 +1,210 @@
+---
+title: "p8105_hw2_sl4283"
+author: "Siling Li"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+ 
+---
+```{r}
+# get started
+library(tidyverse)
+library(janitor)
+library(readxl)
+options(tibble.print_min = 3)
+```
+
+# Problem 1
+
+## Data cleaning of MrTrash Wheel data:
+
+```{r problem1}
+#specify the sheet in the Excel file and to omit columns containing notes
+wheels_data = read_excel("../data/HealthyHarborWaterWheelTotals2017-9-26.xlsx", sheet = "Mr. Trash Wheel", range = cell_cols(1:14)) %>%
+#clean the data
+clean_names() %>%
+
+#omit rows that do not include dumpster-specific data
+filter(!is.na(dumpster),!is.na(date)) %>%
+
+#rounds the number of sports balls to the nearest integer and converts the result to an integer variable
+mutate(sports_balls = as.integer(round(sports_balls))) 
+wheels_data
+
+#the median number of sports balls in a dumpster in 2016
+balls = select(filter(wheels_data, year == 2016),sports_balls)
+med_2016 = apply(balls,2,median)
+```
+
+## Data cleaning of 2016 and 2017 precipitation data:
+```{r}
+# Read and clean precipitation data for 2016 and 2017. 
+precip_2017 = read_excel("../data/HealthyHarborWaterWheelTotals2017-9-26.xlsx", sheet = "2017 Precipitation", skip = 1) %>%
+clean_names() %>%
+# omit rows without precipitation data 
+filter(!is.na(total) & !is.na(month))
+# add a variable year
+precip_2017$year = 2017 
+precip_2017
+#calculate the total precipitation in 2017 
+total_2017 = colSums(select(precip_2017,total))
+
+precip_2016 = read_excel("../data/HealthyHarborWaterWheelTotals2017-9-26.xlsx", sheet = "2016 Precipitation", skip = 1) %>%
+clean_names() %>%
+filter(!is.na(total) & !is.na(month)) 
+precip_2016$year = 2016
+precip_2016
+
+# Combine datasets
+ful_data = full_join(precip_2016, precip_2017) %>%
+# Convert month to a character variable
+mutate(month = month.name[month])
+ful_data
+```
+
+## Comments on data
+The **number of observations** is `r nrow(wheels_data)` in **Mr.Trash Wheels data** and `r nrow(ful_data)` in **2016 and 2017 precipitation data**.  
+The **key variables** are `r colnames(wheels_data)`  in **Mr.Trash Wheels data** and `r colnames(ful_data)`  in **2016 and 2017 precipitation data**.  
+For available data, **the total precipitation in 2017** is `r total_2017` inches.  
+The **median number of sports balls in a dumpster in 2016** is `r med_2016`.  
+
+
+# Problem 2
+
+## Data cleaning of pols-month.csv.
+
+```{r pols-month}
+# read the data
+pols_data = read_csv("../data/fivethirtyeight_datasets/pols-month.csv") %>%
+# clean the data
+clean_names()  %>%
+# use separate() to break up the variable mon into integer variables year, month, and day
+separate(mon, into = c("year","month","day"), sep = "-", convert = TRUE)  %>%
+# replace month number with month name as above and create a president variable taking values gop and dem
+mutate(month= month.name[month],president = ifelse(prez_gop == 1, "gop", "dem")) %>%
+# remove the prez_dem and prez_gop and day variable
+select(-day,-prez_dem,-prez_gop)
+
+pols_data
+```
+
+## Data cleaning of snp.csv.
+```{r}
+# read the data
+snp_data = read_csv("../data/fivethirtyeight_datasets/snp.csv")  %>%
+# clean the data
+clean_names()  %>%
+# use separate() to break up the variable date into integer variables year, month, and day
+separate(date,into = c("month","day","year"), sep = "/", convert = TRUE)  %>%
+# replace month number with month name as above
+mutate(month = month.name[month])
+# organize so that year and month are the leading columns and remove the day variable
+snp_data = snp_data[c(3,1,4)]
+
+snp_data
+```
+
+## Data cleaning of unemployment.csv
+```{r}
+# read the data
+unemploy_data = read_csv("../data/fivethirtyeight_datasets/unemployment.csv")  %>%
+
+#switching from “wide” to “long” format; ensuring that key variables have the same name; and ensuring that key variables take the same values
+gather(key = month, value = unemployment_rate, Jan:Dec) %>%
+mutate(month = month.name[match(month, month.abb)]) %>%
+# clean the data
+clean_names()
+
+unemploy_data
+
+# the average unemployment rate in Januarys in or after 1975
+subset = filter(unemploy_data, year >= 1975 & month == "January") %>%
+filter(!is.na(unemployment_rate))
+mean_unemployment = mean(subset[["unemployment_rate"]])
+
+```
+
+## Join the datasets 
+```{r}
+# merge snp into pols
+join_data = left_join(pols_data,snp_data,by = c("year", "month")) %>%
+# merge unemployment into the result
+left_join(.,unemploy_data,by = c("year", "month"))
+join_data
+```
+## A short paragraph about these datasets:
+The **pols-month dataset** contains the number of national politicians who are democratic or republican at any given time.  
+The **snp dataset** contains Standard & Poor’s stock market index (S&P), often used as a representative measure of stock market as a whole.  
+The **unemployment dataset** contains the unemployment rate.  
+For the **resulting dataset**,  
+the **number of observations** is **`r dim(join_data)[1]`** and the **number of variables** is **`r dim(join_data)[2]`**.  
+The **range of years** is from **`r  range(join_data$year)[1]`** to **`r range(join_data$year)[2]`**.   
+The **names of key variables** are **`r colnames(join_data)`**.  
+In Januarys in or after 1975 in which a democrat was president, the **average unemployment rate** is **`r mean_unemployment`**.  
+
+# Problem 3
+
+## Count entries and unique orders.
+```{r problem 3_1}
+# read the data
+ins_data = read_csv("../data/instacart_train_data.csv.zip")  
+# count entries in the dataset
+entries = nrow(ins_data)
+#count unique orders
+uniq = nrow(distinct(ins_data,order_id))
+```
+There are **`r entries ` entries** and **`r uniq` unique orders** in the dataset.
+
+## Histogram of order hour for items from the produce department
+```{r}
+# histogram of order hour for items from the produce department
+ggplot(filter(ins_data,department=="produce"),aes(x=order_hour_of_day) ) +
+  geom_histogram(bins = 24)
+ 
+```
+
+## The relationship between aisles and departments.
+```{r}
+# here is a table for the relationshipi between aisles and departments
+relation = select(ins_data, aisle, department)
+head(table(relation))
+
+#for example, we can observe the dairy eggs department
+distinct(relation) %>%
+filter(department == "dairy eggs")
+
+#for example, we can observe the produce department
+distinct(relation) %>%
+filter(department == "produce")
+```
+##The most and least ordered department
+```{r}
+stat = as.data.frame(table(ins_data$department))
+stat = arrange(stat,Freq)
+least = head(stat,1)$Var1
+most = tail(stat,1)$Var1
+```
+Therefore, from `r most` department are the most items ordered and from `r least` department are the least items ordered.
+
+## The median number of days since the prior order
+```{r}
+med_days = median(distinct(ins_data,order_id,days_since_prior_order)$days_since_prior_order)
+```
+The median number of days since the prior order is `r med_days`.
+
+## The median hour of the day at which Pink Lady Apples and Coffee Ice Cream are ordered.
+```{r}
+med_hours_apple = median(filter(ins_data, product_name == "Pink Lady Apples")$order_hour_of_day)
+med_hours_coffee = median(filter(ins_data, product_name == "Coffee Ice Cream")$order_hour_of_day)
+
+```
+The median hour of the day at which Pink Lady Apples are ordered is `r med_hours_apple` and `r  med_hours_coffee` for Coffee Ice Cream.
+
+## Answers to the questions:
+There are **`r entries ` entries** and **`r uniq` unique orders** in the dataset.  
+The histogram of order hour for items from the produce department is given above.  
+Aisles are related to departments in that **yogurt, eggs, milk, butter are dairy eggs**; **fresh vegetables, fresh fruits, packaged vegetables fruits are produce**.   
+From **`r most` department** is the **most** items ordered and from **`r least` department** is the **least** items ordered.  
+The **median number of days since the prior order** is **`r med_days`**.  
+The **median hour of the day** at which **Pink Lady Apples ** are ordered is `r med_hours_apple` and **`r  med_hours_coffee`** for **Coffee Ice Cream**.

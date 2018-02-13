@@ -1,0 +1,274 @@
+---
+title: "p8105_hw3_sl4283"
+author: "Siling Li"
+date: '`r format(Sys.time(), "%Y-%m-%d")`'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+ 
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# get started
+library(tidyverse)
+library(janitor)
+library(haven)
+library(ggridges)
+library(ggthemes)
+library(data.table)
+options(tibble.print_min = 3)
+```
+# Problem 1
+
+## Data cleaning of PULSE dataset:
+Read and clean the PULSE dataset; omit observations for which BDI score wasn’t measured
+```{r}
+# Read and clean the PULSE dataset; omit observations for which BDI score wasn’t measured
+pulse_data = read_sas("../data/public_pulse_data.sas7bdat") %>%
+clean_names() %>%
+gather(key = visit, value = bdi, bdiscore_bl:bdiscore_12m) %>%
+filter(!is.na(bdi)) %>%
+print()
+```
+## Briefly summarize the dataset. 
+There are `r length(table(pulse_data$id))` subjects included in the dataset.
+Here is a table showing the number of subjects with observations at 1, 2, 3, or 4 visits.
+```{r}
+pulse_data %>%
+  group_by(id) %>%
+  # get the number of visit time of each id
+  summarise(num_of_visit = n()) %>%
+  group_by(num_of_visit) %>%
+  # get the number of subjects at 1, 2, 3, 4 visits
+  summarise(num_of_subjects = n()) %>%
+  data.table()
+```
+
+## A table showing the mean, median, and standard deviaion of the BDI score at each visit.
+```{r}
+pulse_data %>%
+  group_by(visit) %>%
+  summarize(mean = mean(bdi),
+            median = median(bdi),
+            sd = sd(bdi)) %>%
+  data.table()
+```
+
+## Box and violin plots
+
+```{r}
+# box plot showing the distribution of BDI score at each visit
+pulse_data %>%
+mutate(visit = forcats::fct_relevel(visit, c("bdiscore_bl", "bdiscore_01m", "bdiscore_06m","bdiscore_12m"))) %>% 
+ggplot(aes(x = visit, y = bdi,group=visit)) + geom_boxplot()
+stat_summary(fun.y = median, geom = "point", color = "blue", size = 4)
+
+# violin plot
+pulse_data %>%
+mutate(visit = forcats::fct_relevel(visit, c("bdiscore_bl", "bdiscore_01m", "bdiscore_06m","bdiscore_12m"))) %>% 
+ggplot(aes(x = visit, y = bdi,group=visit)) + 
+  geom_violin(aes(fill = visit), color = "blue", alpha = .5) 
+  
+```
+  
+Comment on the distribution of BDI score: From the box plot, we could see that the median, Q1 and Q3 of each visit is close to each other. In violin plot, we could see that over the last 3 visits, the distribution of BDI scores is similar.
+
+## speghetti plot
+```{r}
+pulse_data %>%
+# remove "bdiscore"
+separate(visit, into = c("remove", "visit"), sep = "_") %>%
+select(-remove) %>%
+# Convert visit to a numeric variable
+mutate(visit = as.character(visit),
+         visit = replace(visit, visit == "bl", 1), 
+         visit = replace(visit, visit == "01m", 2), 
+         visit = replace(visit, visit == "06m", 3), 
+         visit = replace(visit, visit == "12m", 4),
+         visit = as.numeric(visit))  %>%
+# speghetti plot
+ggplot(., aes(x= visit, y=bdi, group = id, color = id)) +
+  geom_point() + geom_path()+
+  ggtitle("Speghetti plot")
+
+```
+  
+Yes. Subjects with high BDI scores at baseline tend to have high BDI scores at 12 months. Therefore, the BDI score is stable within a person over time.
+
+#Problem 2
+```{r}
+# read the data
+ins_data = read_csv("../data/instacart_train_data.csv.zip")  
+```
+##A table showing seven departments from which the most items are ordered.
+```{r}
+ins_data %>%
+  group_by(department) %>%
+  summarize(items_ordered = n()) %>%
+  arrange(.,desc(items_ordered)) %>%
+  head(7)%>%
+  data.table()
+            
+```
+##A table showing the most popular item in each department.
+```{r}
+ins_data %>%
+  group_by(product_name) %>%
+  mutate(sales = sum(order_number)) %>%
+  group_by(department) %>%
+  filter(min_rank(desc(sales)) == 1) %>%
+  select(product_name,department) %>%
+  distinct()%>%
+  data.table()
+  
+  
+```
+##A table showing the mean hour of the day at which Pink Lady Apples and Coffee Ice Cream are ordered on each day of the week
+```{r}
+ins_data %>%
+  filter(product_name == "Pink Lady Apples"| product_name =="Coffee Ice Cream") %>%
+  group_by(product_name,order_dow) %>%
+  summarize(mean_hour = mean(order_hour_of_day)) %>%
+  spread(key=product_name,value=mean_hour) %>%
+  select(-order_dow)%>%
+  data.table()
+
+```
+
+##Violin plot showing the distribution of the order hour of the day for each department. 
+```{r}
+ins_data %>%
+  # Organize your plot according to the IQR of the order hour
+  mutate(department = forcats::fct_reorder(department, order_hour_of_day, fun=IQR)) %>% 
+  # violin plots
+  ggplot(aes( x = department, y = order_hour_of_day)) + 
+  geom_violin(aes(fill = department), color = "blue", alpha = 1) + 
+  stat_summary(fun.y = median, geom = "point", color = "blue", size = 1)+
+  theme(legend.position = "bottom") +
+  labs(xlab("Department"),ylab("Order hour of day"))+
+  ggtitle("The distribution of the order hour of the day for each department")
+
+```
+
+##Ridge plot showing the distribution of the order hour of the day for each department.
+```{r}
+ins_data %>%
+  # Organize your plot according to the IQR of the order hour
+  mutate(department = forcats::fct_reorder(department, order_hour_of_day, fun=IQR)) %>% 
+  # ridge plots
+  ggplot(aes(x = order_hour_of_day, y = department)) + 
+  geom_density_ridges(scale = .95) +
+  labs(ylab("Department"),xlab("Order hour of day"))+
+  ggtitle("The distribution of the order hour of the day for each department")
+
+```
+  
+Comment on the distributions:  
+Most order hour of the day of departments lies between 10 a.m and 6 p.m. The median order hour of the day of departments are close to each other. Moreover, personal care department has the widest IQR and alcohol department has the narrowest one.
+
+
+# Problem 3
+## A short description of the dataset. 
+```{r}
+ny_data = read_csv("../data/nynoaadat.zip",col_types = "cciiiii") 
+
+# number of observation 
+num_obs = nrow(ny_data)
+
+# number of stations 
+num_sta = nrow(distinct(ny_data,id))
+
+#missing data for tmax and snow
+num_miss_tmax = nrow(filter(ny_data,is.na(tmax)))
+num_miss_snow = nrow(filter(ny_data,is.na(snow)))
+
+#missing data for tmax vary by station?
+ny_data %>%
+ filter(is.na(tmax))%>%
+ group_by(id) %>%
+ summarize(miss_tmax = n()) %>%
+ ggplot(aes(x = id,y = miss_tmax)) + 
+  geom_point() 
+#missing data for snow vary by station?
+ny_data %>%
+ filter(is.na(snow))%>%
+ group_by(id) %>%
+ summarize(miss_snow = n()) %>%
+ ggplot(aes(x = id,y = miss_snow)) + 
+  geom_point() 
+
+```
+  
+There are `r num_obs` observations and `r num_sta` stations included in this dataset. There is `r num_miss_tmax` missing data for tmax and `r num_miss_snow` for snow. We can draw the conclusion from the above 2 plots that missing data for tmax and snow vary from station.
+
+## largest snowfall
+The year with largest snow is 
+```{r}
+# year of largest snowfall
+ny_data %>%
+filter(!is.na(snow)) %>%
+filter(min_rank(desc(snow)) ==1) %>%
+separate(date, into = c("year","month","day"), sep = "-", convert = TRUE) %>%
+.$year
+```
+This information online might support my finding: https://www.buzzfeed.com/scott/10-biggest-blizzards-in-new-york-pictures?utm_term=.sjl8yyMXo#.xeWr55RAz
+
+# The ridge plot of snowfall.
+```{r}
+# ridge plot
+ny_data %>%
+select(date, snow) %>%
+# limit observation to snowfall values greater than 0 and less than 100
+filter(!is.na(snow) & snow<100 & snow>0) %>%
+separate(date, into = c("year","month","day"), sep = "-", convert = TRUE) %>%
+# a ridge plot showing the distribution of snowfall values for each year
+ggplot(.,aes(x = snow, y = year, group = year)) + 
+geom_density_ridges(scale = 1)+
+  ggtitle("The distribution of snowfall values for each year")
+
+```
+
+Comment on the recorded snowfall values:  The distribution of snowfall in each year is similar. The snowfall values are clustered around 10 and 25.
+
+## A useful plot showing tmax against tmin.
+```{r}
+# we consider the relationship between tmax and tmin in terms of year
+ny_data %>%
+ select(tmax, tmin, date) %>%
+ separate(date, into = c("year","month","day"), sep = "-", convert = TRUE) %>%
+ filter(!is.na(tmax),!is.na(tmin)) %>%
+group_by(year, month) %>%
+  summarize(tmax = mean(tmax), tmin = mean(tmin)) %>%
+  ggplot(aes(x = tmin, y = tmax, color = year)) +
+  geom_point() +
+  stat_smooth(se = FALSE, size = 0.4) +
+  ggtitle("A scatter plot showing tmax against tmin in terms of year") +
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+
+```
+
+## a spaghetti plot 
+```{r}
+ny_data %>%
+filter(!is.na(tmax)) %>%
+# Separate the date variable into year, month, and day variables.
+separate(date, into = c("year","month","day"), sep = "-", convert = TRUE) %>%
+group_by(id,month) %>%
+mutate(tmax=as.integer(tmax)) %>%
+# For each station and month, average across year to obtain the station-specific monthly average tmax
+summarize(month_mean_tmax = mean(tmax)) %>%
+select(id,month,month_mean_tmax) %>%
+# a spaghetti plot showing the average tmax curve for each station. 
+ggplot(aes(x=month, y = month_mean_tmax, group=id)) +
+  geom_path() +
+  ggtitle("A spaghetti plot showing the average tmax curve for each station") +
+  theme(legend.position = "bottom")
+
+```
+
+Comment: The distribution of tmax is similar between each station. For most stations, the largest tmax tend to be in July.
+

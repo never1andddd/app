@@ -1,0 +1,108 @@
+---
+title: "p8105_hw1_sl4283"
+author: "Siling Li"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+ 
+---
+
+# Problem 1
+
+Here's the **code chunk** for problem 1:
+
+```{r problem1}
+vec_a <- round(runif( 10, 0, 20)) #generate a vector containing 10 numbers
+vec_a_multi <- vec_a * 5 # Multiply this vector by 5
+vec_a_multi_add <- vec_a_multi + 7 # Add 7 to this vector and we get
+vec_b = sample(10) # generate another vector containing 10 integers
+sum = vec_a_multi_add + vec_b # Add up the two vectors
+product = vec_a_multi_add * vec_b # Multiply the two vectors
+```
+The **vector** is [`r vec_a`].  
+The vector **multiplid by 5** is [`r vec_a_multi`].  
+The vector **adds 7** is [`r vec_a_multi_add`].  
+The **second vector** is [`r vec_b`].  
+The **sum** of the 2 vectors is [`r sum`].  
+The **product** of the 2 vectors is [`r product`].  
+
+##Comments on R’s arithmetic operations
+(1) **A vector and a scalar**: The scalar will be computed with **each member** of vector and we will get a vector containing those results.
+(2) **Two vectors**:  If the 2 vectors are of the **same length**, each member in one vector will be computed with the **corresponding** members from another vector and we will get a vector countaining those results.
+(3) **Try to add vectors of length ten and length nine; what happens?**:  
+If two vectors are of **unequal length**, the **shorter one** will be **recycled** in order to match the longer vector. In this case, the **first** member of the vector of **length nine** will be added with the **last** member of the vector of **length nine**. As a result, we get a vector of length ten.
+(4) **What if you add vectors of length ten and length five?**:   
+The members of vector of length five will be **recycled**. These members will be computed with the former 5 members of vector of length ten and then the later 5 members. As a result, we get a vector of length ten.
+
+###Reference
+1. http://www.r-tutor.com/r-introduction/vector/vector-arithmetics
+
+# Problem 2
+
+Here is the **code chunk** for the first part of problem 2.
+```{r problem 2-1}
+var_unif = runif(10000,0,10) # a random sample of size 10000 from a uniform[0, 10] distribution 
+var_unif = var_unif[var_unif <= 9.4 ]# Remove values that are greater than 9.4
+```
+
+Here is a short **description** of my vector:  
+The **length** of the vector is `r length(var_unif)`.  
+The **mean** is `r mean(var_unif)` and **median** is `r median(var_unif)`.  
+The **standard deviation** is `r sd(var_unif)`.  
+The **minumum value** is `r min(var_unif)` and **maximum value** is `r max(var_unif)`.  
+
+Here is the **code chunk** for the second part of problem 2.
+```{r problem 2-2}
+var_norm = rnorm(5000, 5, 5) # a new random sample of size 5000 from a Normal[5, sd = 5] distribution
+var_norm = var_norm[var_norm >= 0] # Omit values that are less than zero
+```
+
+Here is a short **description** of my vector:  
+The **length** of the vector is `r length(var_norm)`.  
+The** mean **is `r mean(var_norm)` and median is `r median(var_norm)`.  
+The **standard deviation **is `r sd(var_norm)`.  
+The **minumum value** is `r min(var_norm)` and **maximum value** is `r max(var_norm)`.  
+
+
+The **histogram** of the new sample is as following.
+```{r hist}
+hist(var_norm)
+```
+
+# Problem 3
+Here is a vector containing five **integers** and vector containing five **character strings**
+```{r two vectors}
+vec_int = c(1:5)
+vec_str = c("a", "b", "c", "d", "e" )
+```
+**Add** the two vectors. 
+```{r add, error = TRUE}
+vec_int + vec_str
+```
+We get an error message:" Error in vec_int + vec_str: non-numeric argument to binary operator".
+
+**Combine** the two vectors into one using c().
+```{r combine}
+combine = c(vec_int, vec_str)
+class = class(combine)
+```
+The **new vector** is (`r combine`) and the **class** of the new vector is `r class`.
+
+Here is a **vector** containing the values "a", 7, and 42.
+```{r mixed vector, error = TRUE}
+mixed_vec = c("a", 7, 42)
+mixed_vec[2] + mixed_vec[3] # add the second and third element of vector
+```
+We get an error message:" Error in vec_int + vec_str: non-numeric argument to binary operator". We cannot add the second and third values of this vector because vectors are **one-dimensional arrays** used to store collection data of the **same** mode. Therefore, when there are 2 types of data, namely **numeric and character** in this case, R tend to convert them into same class of data. The 7 and 42 in the vector are converted into **characters** and thus could **not** be added together.
+
+Here is a **list** containing the values "a", 7, and 42.
+```{r mixed list, error = TRUE}
+lst = list("a", 7, 42)
+lst[[2]] + lst[[3]] # add the second and third values of this list
+```
+We can add the second and third values of this list because list is ordered collection of objects, where the elements can be of **different** types. That is, R will not change the type of data. Therefore, 7 and 42 in the vector are still **numeric arguments**.
+
+###Reference
+1. http://www.r-tutor.com/r-introduction/vector
+2. http://www.r-tutor.com/r-introduction/list
